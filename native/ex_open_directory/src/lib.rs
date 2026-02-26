@@ -44,6 +44,30 @@ fn from_ns(s: &NSString) -> String {
     s.to_string()
 }
 
+fn base64_encode(data: &[u8]) -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut result = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+        result.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
+        result.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
+        if chunk.len() > 1 {
+            result.push(CHARS[((triple >> 6) & 0x3F) as usize] as char);
+        } else {
+            result.push('=');
+        }
+        if chunk.len() > 2 {
+            result.push(CHARS[(triple & 0x3F) as usize] as char);
+        } else {
+            result.push('=');
+        }
+    }
+    result
+}
+
 /// Extract error description from an Option<Retained<NSError>> (the objc2 0.3+ pattern).
 fn err_to_string(err: &Option<Retained<objc2_foundation::NSError>>) -> String {
     match err {
@@ -309,6 +333,9 @@ fn get_attributes<'a>(
     unsafe {
         let mut result: Vec<(String, Vec<String>)> = Vec::new();
 
+        let nsstring_class = objc2::runtime::AnyClass::get(c"NSString").unwrap();
+        let nsdata_class = objc2::runtime::AnyClass::get(c"NSData").unwrap();
+
         for attr_name in &attribute_names {
             let mut err: Option<Retained<objc2_foundation::NSError>> = None;
             let values = record.valuesForAttribute_error(Some(&ns(attr_name)), Some(&mut err));
@@ -317,10 +344,25 @@ fn get_attributes<'a>(
             if let Some(vals) = values {
                 for i in 0..vals.count() {
                     let obj = vals.objectAtIndex(i);
-                    let obj_ptr = (&*obj) as *const AnyObject as *mut NSString;
-                    if let Some(s) = Retained::retain(obj_ptr) {
-                        strings.push(from_ns(&s));
+                    let obj_ref = &*obj;
+
+                    let is_string: bool = objc2::msg_send![obj_ref, isKindOfClass: nsstring_class];
+                    let is_data: bool = objc2::msg_send![obj_ref, isKindOfClass: nsdata_class];
+
+                    if is_string {
+                        let obj_ptr = obj_ref as *const AnyObject as *mut NSString;
+                        if let Some(s) = Retained::retain(obj_ptr) {
+                            strings.push(from_ns(&s));
+                        }
+                    } else if is_data {
+                        let len: usize = objc2::msg_send![obj_ref, length];
+                        let bytes: *const u8 = objc2::msg_send![obj_ref, bytes];
+                        if !bytes.is_null() && len > 0 {
+                            let slice = std::slice::from_raw_parts(bytes, len);
+                            strings.push(format!("base64:{}", base64_encode(slice)));
+                        }
                     }
+                    // else: skip unknown types silently
                 }
             }
             result.push((attr_name.clone(), strings));
@@ -490,14 +532,20 @@ fn password_policy<'a>(
             "dsAttrTypeNative:msDS-UserPasswordExpiryTimeComputed",
         ];
 
+        let nsstring_class = objc2::runtime::AnyClass::get(c"NSString").unwrap();
+
         for attr in &policy_attrs {
             let mut err: Option<Retained<objc2_foundation::NSError>> = None;
             if let Some(vals) = record.valuesForAttribute_error(Some(&ns(attr)), Some(&mut err)) {
                 if vals.count() > 0 {
                     let obj = vals.objectAtIndex(0);
-                    let obj_ptr = (&*obj) as *const AnyObject as *mut NSString;
-                    if let Some(s) = Retained::retain(obj_ptr) {
-                        policy_info.push((attr.to_string(), from_ns(&s)));
+                    let obj_ref = &*obj;
+                    let is_string: bool = objc2::msg_send![obj_ref, isKindOfClass: nsstring_class];
+                    if is_string {
+                        let obj_ptr = obj_ref as *const AnyObject as *mut NSString;
+                        if let Some(s) = Retained::retain(obj_ptr) {
+                            policy_info.push((attr.to_string(), from_ns(&s)));
+                        }
                     }
                 }
             }
