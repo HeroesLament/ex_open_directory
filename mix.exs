@@ -1,7 +1,7 @@
 defmodule ExOpenDirectory.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.1.1"
   @source_url "https://github.com/HeroesLament/ex_open_directory"
 
   def project do
@@ -38,7 +38,7 @@ defmodule ExOpenDirectory.MixProject do
 
   defp package do
     [
-      files: ~w(lib native/ex_open_directory/.cargo native/ex_open_directory/src native/ex_open_directory/Cargo.toml mix.exs README.md LICENSE),
+      files: ~w(lib native/ex_open_directory/.cargo native/ex_open_directory/src native/ex_open_directory/Cargo.toml native/ex_open_directory/build.rs mix.exs README.md LICENSE),
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url}
     ]
