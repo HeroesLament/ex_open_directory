@@ -1,0 +1,16 @@
+[package]
+name = "ex_open_directory"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "ex_open_directory"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "0.36"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSArray", "NSDictionary", "NSError", "NSEnumerator", "NSObject", "NSValue"] }
+objc2-open-directory = { version = "0.3", features = ["ODNode", "ODSession", "ODQuery", "ODRecord", "CFOpenDirectory", "CFOpenDirectoryConstants"] }
